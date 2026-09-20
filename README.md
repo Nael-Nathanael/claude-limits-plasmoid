@@ -20,7 +20,9 @@ always there, so you stop finding out the hard way.
 └ 5-hour usage
 ```
 
-- Green under 50%, yellow from 50%, red from 80%.
+- Green under 50%, yellow from 50%, red from 80%. Pastel shades on a dark panel,
+  deeper ones on a light panel. It follows the panel's text colour, so it keeps up
+  when the panel changes under it.
 - When the week is too used up for the days left, it shows only when the week
   comes back.
 - Grey `*` = last fetch failed, numbers are old. Hover for the reason.
