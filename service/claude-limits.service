@@ -1,0 +1,6 @@
+[Unit]
+Description=Refresh AI quota files in ~/.cache/claude-limits
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/claude-limits-update

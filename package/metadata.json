@@ -2,10 +2,10 @@
     "KPlugin": {
         "Id": "io.github.naelnathanael.claudelimits",
         "Name": "Claude Limits",
-        "Description": "Claude Code 5-hour and weekly usage limits in the panel.",
+        "Description": "Claude Code, Codex and Antigravity 5-hour and weekly usage limits in the panel.",
         "Icon": "speedometer",
         "Category": "System Information",
-        "Version": "1.0",
+        "Version": "2.0",
         "License": "MIT",
         "Website": "https://github.com/Nael-Nathanael/claude-limits-plasmoid",
         "Authors": [{ "Name": "Nael Nathanael" }]

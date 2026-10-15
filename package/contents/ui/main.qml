@@ -9,10 +9,16 @@ PlasmoidItem {
     id: root
 
     readonly property int profile: Plasmoid.configuration.profile
-    readonly property string script: decodeURIComponent(Qt.resolvedUrl("../tools/usage.py").toString().replace("file://", ""))
+    readonly property string provider: Plasmoid.configuration.provider
+    readonly property bool claude: provider === "claude"
+    readonly property string name: claude ? `ccd ${profile}` : provider
+    // The file claude-limits-update (and Claude Code's statusline) keeps fresh.
+    readonly property string target: claude ? `claude-${profile}` : provider
+    readonly property string readCmd: `cat "\${XDG_CACHE_HOME:-$HOME/.cache}/claude-limits/${target}.json"`
+    readonly property string forceCmd: `"$HOME/.local/bin/claude-limits-update" --force ${target}`
     readonly property var months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
 
-    property var info: ({})
+    property var state: ({})
     property double now: Date.now()
 
     function color(pct) {
@@ -21,16 +27,16 @@ PlasmoidItem {
 
     // Resets land at hh:59:59.9; round to the nearest minute.
     function resetAt(win) {
-        return win && win.resets_at ? new Date(new Date(win.resets_at).getTime() + 30000) : null;
+        return win && win.resets_at ? new Date(win.resets_at * 1000 + 30000) : null;
     }
 
     // A window whose reset time has passed is back to 0%.
     function pctOf(win) {
         if (!win)
             return null;
-        if (win.resets_at && new Date(win.resets_at).getTime() <= now)
+        if (win.resets_at && win.resets_at * 1000 <= now)
             return 0;
-        return Math.round(win.utilization);
+        return Math.round(win.used_percentage);
     }
 
     function hm(d, sep) {
@@ -41,44 +47,46 @@ PlasmoidItem {
         return p === null ? "–" : `<font color="${color(p)}">${p}%</font>`;
     }
 
-    readonly property var fiveWin: info.usage ? info.usage.five_hour : null
-    readonly property var weekWin: info.usage ? info.usage.seven_day : null
+    readonly property var fiveWin: state.five_hour
+    readonly property var weekWin: state.seven_day
     readonly property var five: pctOf(fiveWin)
     readonly property var week: pctOf(weekWin)
+    // The service refreshes every 5 minutes; much older means it is not running.
+    readonly property bool old: !!state.error || (!!state.saved_at && now - state.saved_at * 1000 > 600000)
 
-    readonly property string text: {
-        const stale = info.error ? '<font color="#888888">*</font>' : "";
+    // Pill cells, two per row (percent, reset): 5h over 7d.
+    readonly property var cells: {
+        if (!fiveWin && !weekWin && !state.error)
+            return [`${name} …`, ""];
+        const stale = old ? '<font color="#888888">*</font>' : "";
         const wr = resetAt(weekWin);
         const weekReset = wr ? `${hm(wr, ".")}@${months[wr.getMonth()]} ${wr.getDate()}` : "–";
-        // Week too used up for the days left: the 5h numbers don't matter, only when it comes back.
-        // Cutoff drops 5 points per day left on 20x, 10 on 5x.
-        const daysLeft = wr ? (wr.getTime() - now) / 86400000 : 0;
-        const cutoff = 100 - ((info.tier || "").includes("20x") ? 5 : 10) * daysLeft;
-        if (week !== null && week >= cutoff)
-            return `<font color="${color(week)}">${weekReset}</font>${stale}`;
-        return `${num(five)} ${hm(resetAt(fiveWin), ".")} — ${num(week)} ${weekReset}${stale}`;
+        return [num(five), hm(resetAt(fiveWin), "."), num(week), weekReset + stale];
     }
 
-    Plasmoid.status: info.hidden ? PlasmaCore.Types.HiddenStatus : PlasmaCore.Types.ActiveStatus
+    Plasmoid.status: state.hidden ? PlasmaCore.Types.HiddenStatus : PlasmaCore.Types.ActiveStatus
 
-    readonly property string profileName: profile === 1 ? "Claude Code" : `ccd ${profile}`
-
-    toolTipMainText: `${profileName}  ·  ${info.tier || "?"}`
+    toolTipMainText: state.tier ? `${name}  ·  ${state.tier}` : name
     toolTipSubText: {
+        if (state.missing)
+            return `No quota file yet: ~/.cache/claude-limits/${target}.json\nIs claude-limits.timer running?`;
         const day = d => d ? Qt.formatDateTime(d, "ddd HH:mm") : "–";
         const lines = [
             `5h session   ${five ?? "–"}%   resets ${hm(resetAt(fiveWin), ":")}`,
             `7d week   ${week ?? "–"}%   resets ${day(resetAt(weekWin))}`,
         ];
-        const note = [info.error, info.at ? `updated ${day(new Date(info.at * 1000))}` : ""].filter(Boolean).join(" · ");
+        // agy: one 5h and weekly limit per model group; the pill shows the most used.
+        for (const g of state.groups || [])
+            lines.push(`${g.name}   5h ${pctOf(g["5h"]) ?? "–"}% · week ${pctOf(g.weekly) ?? "–"}%`);
+        const note = [state.error, state.saved_at ? `updated ${day(new Date(state.saved_at * 1000))}` : ""].filter(Boolean).join(" · ");
         if (note)
             lines.push(note);
         lines.push("Click to refresh");
         return lines.join("\n");
     }
 
-    function refresh(force) {
-        exec.connectSource(`python3 '${script}' ${profile}${force ? " force" : ""}`);
+    function read() {
+        exec.connectSource(readCmd);
     }
 
     P5Support.DataSource {
@@ -86,36 +94,82 @@ PlasmoidItem {
         engine: "executable"
         onNewData: (source, data) => {
             disconnectSource(source);
-            try {
-                root.info = JSON.parse(data["stdout"]);
-            } catch (e) {
-                console.error("claude limits:", data["stderr"] || e);
-            }
             root.now = Date.now();
+            if (source !== root.readCmd) {
+                root.read();  // the forced refresh finished
+                return;
+            }
+            try {
+                root.state = JSON.parse(data["stdout"]);
+            } catch (e) {
+                root.state = { missing: true };
+            }
         }
     }
 
-    // The script only hits the API when its cache is stale or the token was renewed.
+    // Reading a small local file is cheap; the network work happens in the service.
     Timer {
-        interval: 60000
+        interval: 10000
         running: true
         repeat: true
         triggeredOnStart: true
-        onTriggered: root.refresh(false)
+        onTriggered: root.read()
     }
 
     preferredRepresentation: fullRepresentation
     fullRepresentation: MouseArea {
-        Layout.minimumWidth: label.implicitWidth
-        Layout.preferredWidth: label.implicitWidth
-        Layout.maximumWidth: label.implicitWidth
-        onClicked: root.refresh(true)
+        id: pill
+        Layout.minimumWidth: grid.implicitWidth
+        Layout.preferredWidth: grid.implicitWidth
+        Layout.maximumWidth: grid.implicitWidth
+        onClicked: exec.connectSource(root.forceCmd)
 
-        PlasmaComponents.Label {
-            id: label
+        // Two lines share the panel height.
+        // Capped so tall pills keep room above and below the text.
+        readonly property int fontPx: Math.max(8, Math.min(10, Math.floor(height * 0.4)))
+        readonly property bool tall: height > 26
+
+        GridLayout {
+            id: grid
             anchors.centerIn: parent
-            textFormat: Text.StyledText
-            text: root.info.usage || root.info.error ? root.text : `${root.profileName} …`
+            columns: 2
+            rowSpacing: pill.tall ? -Math.round(pill.fontPx * 0.35) : 0
+            columnSpacing: pill.fontPx * 0.4
+
+            component Cell: PlasmaComponents.Label {
+                visible: text !== ""
+                textFormat: Text.StyledText
+                font.pixelSize: pill.fontPx
+            }
+
+            Cell {
+                Layout.alignment: Qt.AlignRight
+                text: root.cells[0]
+            }
+            // The 5h reset is shorter than the 7d one: the logo fills the gap.
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: pill.fontPx * 0.4
+                Cell {
+                    text: root.cells[1]
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
+                Image {
+                    source: Qt.resolvedUrl(`../images/${{ claude: "claude.svg", codex: "codex.svg", agy: "agy.png" }[root.provider]}`)
+                    sourceSize: Qt.size(pill.fontPx, pill.fontPx)
+                    Layout.preferredWidth: pill.fontPx
+                    Layout.preferredHeight: pill.fontPx
+                }
+            }
+            Cell {
+                Layout.alignment: Qt.AlignRight
+                text: root.cells[2] ?? ""
+            }
+            Cell {
+                text: root.cells[3] ?? ""
+            }
         }
     }
 }

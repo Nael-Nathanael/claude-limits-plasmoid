@@ -1,0 +1,10 @@
+[Unit]
+Description=Check AI quota files every minute
+
+[Timer]
+OnActiveSec=0
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
