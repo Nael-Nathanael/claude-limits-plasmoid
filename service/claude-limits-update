@@ -27,6 +27,8 @@ CODEX_URL = "https://chatgpt.com/backend-api/wham/usage"
 AGY_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 MAX_AGE = 300
+# Logins keep the old tier ids after Anthropic renamed the plans.
+RENAMED_TIERS = {"max 20x": "ultra", "max 5x": "max"}
 
 HOME = os.path.expanduser("~")
 OUT = f"{os.environ.get('XDG_CACHE_HOME', HOME + '/.cache')}/claude-limits"
@@ -69,6 +71,7 @@ def fetch_claude(n):
     except (OSError, ValueError, KeyError):
         raise Hidden
     tier = (creds.get("rateLimitTier") or "").replace("default_claude_", "", 1).replace("_", " ")
+    tier = RENAMED_TIERS.get(tier, tier)
     if not creds.get("accessToken") or creds.get("expiresAt", 0) < time.time() * 1000:
         return {"tier": tier, "error": f"token expired — run ccd {n} to refresh"}
     usage = get(CLAUDE_URL, {"Authorization": f"Bearer {creds['accessToken']}", "anthropic-beta": "oauth-2025-04-20"})

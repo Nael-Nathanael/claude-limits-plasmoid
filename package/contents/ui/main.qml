@@ -54,14 +54,19 @@ PlasmoidItem {
     // The service refreshes every 5 minutes; much older means it is not running.
     readonly property bool old: !!state.error || (!!state.saved_at && now - state.saved_at * 1000 > 600000)
 
+    // Ultra has no 5-hour limit: only a weekly window comes back.
+    readonly property bool weekOnly: !fiveWin && !!weekWin
+
     // Pill cells, two per row (percent, reset): 5h over 7d.
     readonly property var cells: {
         if (!fiveWin && !weekWin && !state.error)
             return [`${name} …`, ""];
         const stale = old ? '<font color="#888888">*</font>' : "";
         const wr = resetAt(weekWin);
-        const weekReset = wr ? `${hm(wr, ".")}@${months[wr.getMonth()]} ${wr.getDate()}` : "–";
-        return [num(five), hm(resetAt(fiveWin), "."), num(week), weekReset + stale];
+        const weekReset = (wr ? `${hm(wr, ".")}@${months[wr.getMonth()]} ${wr.getDate()}` : "–") + stale;
+        if (weekOnly)
+            return [num(week), weekReset];
+        return [num(five), hm(resetAt(fiveWin), "."), num(week), weekReset];
     }
 
     Plasmoid.status: state.hidden ? PlasmaCore.Types.HiddenStatus : PlasmaCore.Types.ActiveStatus
@@ -72,7 +77,7 @@ PlasmoidItem {
             return `No quota file yet: ~/.cache/claude-limits/${target}.json\nIs claude-limits.timer running?`;
         const day = d => d ? Qt.formatDateTime(d, "ddd HH:mm") : "–";
         const lines = [
-            `5h session   ${five ?? "–"}%   resets ${hm(resetAt(fiveWin), ":")}`,
+            weekOnly ? "5h session   no limit" : `5h session   ${five ?? "–"}%   resets ${hm(resetAt(fiveWin), ":")}`,
             `7d week   ${week ?? "–"}%   resets ${day(resetAt(weekWin))}`,
         ];
         // agy: one 5h and weekly limit per model group; the pill shows the most used.

@@ -22,11 +22,13 @@ Each account has one small JSON file:
 {
   "five_hour": { "used_percentage": 12, "resets_at": 1792042200 },
   "seven_day": { "used_percentage": 46, "resets_at": 1792260000 },
-  "tier": "max 5x",
+  "tier": "max",
   "error": null,
   "saved_at": 1792026690
 }
 ```
+
+`five_hour` is `null` on plans without a 5-hour limit, such as Claude Ultra.
 
 The widget only reads that file, every 10 seconds. It makes no network calls
 and holds no tokens.
@@ -66,6 +68,7 @@ account and pick the account under right-click → Configure.
 12% 01.00@Oct 18 ← weekly usage, resets Oct 18, 01:00
 ```
 
+- No 5-hour limit (Claude Ultra): the pill shows only the weekly line.
 - Green under 50%, yellow from 50%, red from 80%.
 - A grey `*` means the numbers are old: the last fetch failed or the service
   stopped. Hover for the reason.
