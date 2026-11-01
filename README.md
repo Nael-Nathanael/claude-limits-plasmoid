@@ -66,9 +66,13 @@ account and pick the account under right-click → Configure.
 ```
  1% 12.30        ← 5-hour usage, resets 12:30
 12% 01.00@Oct 18 ← weekly usage, resets Oct 18, 01:00
+40% ▬▬▬▬───      ← safe pace: 40% of the week has passed
 ```
 
-- No 5-hour limit (Claude Ultra): the pill shows only the weekly line.
+- The last line is the safe pace: how much of the week has passed, from 0% at
+  its start to 100% at the reset. On the bar, grey is time gone and colour is
+  weekly usage. Colour past the grey means you are ahead of pace.
+- No 5-hour limit (Claude Ultra): the 5-hour line is dropped.
 - Green under 50%, yellow from 50%, red from 80%.
 - A grey `*` means the numbers are old: the last fetch failed or the service
   stopped. Hover for the reason.

@@ -56,17 +56,18 @@ PlasmoidItem {
 
     // Ultra has no 5-hour limit: only a weekly window comes back.
     readonly property bool weekOnly: !fiveWin && !!weekWin
+    // Safe pace: the share of the week gone by, 0% at its start to 100% at reset.
+    readonly property var pace: {
+        if (!weekWin || !weekWin.resets_at)
+            return null;
+        const left = weekWin.resets_at * 1000 - now;
+        return Math.round(Math.min(100, Math.max(0, 100 - left / 6048000)));
+    }
 
-    // Pill cells, two per row (percent, reset): 5h over 7d.
-    readonly property var cells: {
-        if (!fiveWin && !weekWin && !state.error)
-            return [`${name} …`, ""];
-        const stale = old ? '<font color="#888888">*</font>' : "";
+    readonly property bool loading: !fiveWin && !weekWin && !state.error
+    readonly property string weekReset: {
         const wr = resetAt(weekWin);
-        const weekReset = (wr ? `${hm(wr, ".")}@${months[wr.getMonth()]} ${wr.getDate()}` : "–") + stale;
-        if (weekOnly)
-            return [num(week), weekReset];
-        return [num(five), hm(resetAt(fiveWin), "."), num(week), weekReset];
+        return (wr ? `${hm(wr, ".")}@${months[wr.getMonth()]} ${wr.getDate()}` : "–") + (old ? '<font color="#888888">*</font>' : "");
     }
 
     Plasmoid.status: state.hidden ? PlasmaCore.Types.HiddenStatus : PlasmaCore.Types.ActiveStatus
@@ -80,6 +81,8 @@ PlasmoidItem {
             weekOnly ? "5h session   no limit" : `5h session   ${five ?? "–"}%   resets ${hm(resetAt(fiveWin), ":")}`,
             `7d week   ${week ?? "–"}%   resets ${day(resetAt(weekWin))}`,
         ];
+        if (weekWin)
+            lines.push(`Safe pace   ${pace ?? "–"}%   keep 7d under it to last the week`);
         // agy: one 5h and weekly limit per model group; the pill shows the most used.
         for (const g of state.groups || [])
             lines.push(`${g.name}   5h ${pctOf(g["5h"]) ?? "–"}% · week ${pctOf(g.weekly) ?? "–"}%`);
@@ -129,16 +132,20 @@ PlasmoidItem {
         Layout.maximumWidth: grid.implicitWidth
         onClicked: exec.connectSource(root.forceCmd)
 
-        // Two lines share the panel height.
-        // Capped so tall pills keep room above and below the text.
-        readonly property int fontPx: Math.max(8, Math.min(10, Math.floor(height * 0.4)))
+        // Three lines (5h, 7d, safe pace), or two on Ultra, centred on the panel.
+        // The applet box is shorter than the panel; the text may spill into its margin.
+        readonly property int fontPx: Math.max(7, Math.min(10, Math.floor(height * 0.35)))
         readonly property bool tall: height > 26
+        readonly property bool showPace: !root.loading && !!root.weekWin
 
         GridLayout {
             id: grid
             anchors.centerIn: parent
+            // Digits leave the descender space empty: centre the ink, not the boxes.
+            anchors.verticalCenterOffset: 1
             columns: 2
-            rowSpacing: pill.tall ? -Math.round(pill.fontPx * 0.35) : 0
+            // Label boxes carry extra leading; overlap it so three lines fit.
+            rowSpacing: -Math.round(pill.fontPx * (pill.tall ? 0.35 : 0.15))
             columnSpacing: pill.fontPx * 0.4
 
             component Cell: PlasmaComponents.Label {
@@ -147,16 +154,17 @@ PlasmoidItem {
                 font.pixelSize: pill.fontPx
             }
 
+            // Row 1: 5h, or 7d on Ultra.
             Cell {
                 Layout.alignment: Qt.AlignRight
-                text: root.cells[0]
+                text: root.loading ? `${root.name} …` : root.weekOnly ? root.num(root.week) : root.num(root.five)
             }
             // The 5h reset is shorter than the 7d one: the logo fills the gap.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: pill.fontPx * 0.4
                 Cell {
-                    text: root.cells[1]
+                    text: root.loading ? "" : root.weekOnly ? root.weekReset : root.hm(root.resetAt(root.fiveWin), ".")
                 }
                 Item {
                     Layout.fillWidth: true
@@ -168,12 +176,44 @@ PlasmoidItem {
                     Layout.preferredHeight: pill.fontPx
                 }
             }
+            // Row 2: 7d.
             Cell {
                 Layout.alignment: Qt.AlignRight
-                text: root.cells[2] ?? ""
+                text: root.loading || root.weekOnly ? "" : root.num(root.week)
             }
             Cell {
-                text: root.cells[3] ?? ""
+                text: root.loading || root.weekOnly ? "" : root.weekReset
+            }
+            // Last row: safe pace in grey, and a bar of the week: grey = time gone, colour = 7d used.
+            Cell {
+                Layout.alignment: Qt.AlignRight
+                visible: pill.showPace
+                text: `<font color="#888888">${root.pace ?? "–"}%</font>`
+            }
+            Item {
+                visible: pill.showPace
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(2, Math.round(pill.fontPx * 0.3))
+                Layout.alignment: Qt.AlignVCenter
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: height / 2
+                    color: "#888888"
+                    opacity: 0.25
+                }
+                Rectangle {
+                    width: parent.width * (root.pace ?? 0) / 100
+                    height: parent.height
+                    radius: height / 2
+                    color: "#888888"
+                }
+                Rectangle {
+                    width: parent.width * Math.min(100, root.week ?? 0) / 100
+                    height: parent.height
+                    radius: height / 2
+                    color: root.color(root.week ?? 0)
+                }
             }
         }
     }
