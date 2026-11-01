@@ -20,9 +20,13 @@ PlasmoidItem {
 
     property var state: ({})
     property double now: Date.now()
+    // Set by the label. Light text means a dark panel behind it.
+    property bool lightText: true
 
+    // Pastels on a dark panel, deeper shades on a light one.
     function color(pct) {
-        return pct >= 80 ? "#ff6b6b" : pct >= 50 ? "#ffd166" : "#8ce99a";
+        const c = lightText ? ["#ff6b6b", "#ffd166", "#8ce99a"] : ["#c92a2a", "#b35c00", "#2b8a3e"];
+        return pct >= 80 ? c[0] : pct >= 50 ? c[1] : c[2];
     }
 
     // Resets land at hh:59:59.9; round to the nearest minute.
@@ -158,6 +162,11 @@ PlasmoidItem {
             Cell {
                 Layout.alignment: Qt.AlignRight
                 text: root.loading ? `${root.name} …` : root.weekOnly ? root.num(root.week) : root.num(root.five)
+
+                // The text colour comes from the Plasma style, or from Panel Colorizer.
+                readonly property bool light: 0.299 * color.r + 0.587 * color.g + 0.114 * color.b > 0.5
+                onLightChanged: root.lightText = light
+                Component.onCompleted: root.lightText = light
             }
             // The 5h reset is shorter than the 7d one: the logo fills the gap.
             RowLayout {

@@ -73,7 +73,9 @@ account and pick the account under right-click → Configure.
   its start to 100% at the reset. On the bar, grey is time gone and colour is
   weekly usage. Colour past the grey means you are ahead of pace.
 - No 5-hour limit (Claude Ultra): the 5-hour line is dropped.
-- Green under 50%, yellow from 50%, red from 80%.
+- Green under 50%, yellow from 50%, red from 80%. Pastel shades on a dark panel,
+  deeper ones on a light panel. It follows the panel's text colour, so it keeps
+  up when the panel changes under it.
 - A grey `*` means the numbers are old: the last fetch failed or the service
   stopped. Hover for the reason.
 - Click to fetch now.
