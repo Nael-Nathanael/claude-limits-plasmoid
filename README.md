@@ -66,12 +66,15 @@ account and pick the account under right-click → Configure.
 ```
  1% 12.30        ← 5-hour usage, resets 12:30
 12% 01.00@Oct 18 ← weekly usage, resets Oct 18, 01:00
-40% ▬▬▬▬───      ← safe pace: 40% of the week has passed
+40% ▬▬▬▬───      ← safe pace: 40% of the week's usable time has passed
 ```
 
-- The last line is the safe pace: how much of the week has passed, from 0% at
-  its start to 100% at the reset. On the bar, grey is time gone and colour is
-  weekly usage. Colour past the grey means you are ahead of pace.
+- The last line is the safe pace: how much of the week's usable time has
+  passed, from 0% at its start to 100% at the reset. 00.00–06.00 counts as no
+  usage, and Saturday and Sunday count half, in your local time. On the bar,
+  grey is time gone and colour is weekly usage. Colour past the grey means you
+  are ahead of pace.
+- Check the formula: `node test/pace-test.js`.
 - No 5-hour limit (Claude Ultra): the 5-hour line is dropped.
 - Green under 50%, yellow from 50%, red from 80%. Pastel shades on a dark panel,
   deeper ones on a light panel. It follows the panel's text colour, so it keeps

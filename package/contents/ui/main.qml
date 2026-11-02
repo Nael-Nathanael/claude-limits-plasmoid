@@ -4,6 +4,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasma5support as P5Support
+import "pace.js" as Pace
 
 PlasmoidItem {
     id: root
@@ -60,13 +61,7 @@ PlasmoidItem {
 
     // Ultra has no 5-hour limit: only a weekly window comes back.
     readonly property bool weekOnly: !fiveWin && !!weekWin
-    // Safe pace: the share of the week gone by, 0% at its start to 100% at reset.
-    readonly property var pace: {
-        if (!weekWin || !weekWin.resets_at)
-            return null;
-        const left = weekWin.resets_at * 1000 - now;
-        return Math.round(Math.min(100, Math.max(0, 100 - left / 6048000)));
-    }
+    readonly property var pace: weekWin && weekWin.resets_at ? Pace.pace(weekWin.resets_at * 1000, now) : null
 
     readonly property bool loading: !fiveWin && !weekWin && !state.error
     readonly property string weekReset: {
@@ -86,7 +81,7 @@ PlasmoidItem {
             `7d week   ${week ?? "–"}%   resets ${day(resetAt(weekWin))}`,
         ];
         if (weekWin)
-            lines.push(`Safe pace   ${pace ?? "–"}%   keep 7d under it to last the week`);
+            lines.push(`Safe pace   ${pace ?? "–"}%   keep 7d under it to last the week (nights 0–6 skipped, weekends half)`);
         // agy: one 5h and weekly limit per model group; the pill shows the most used.
         for (const g of state.groups || [])
             lines.push(`${g.name}   5h ${pctOf(g["5h"]) ?? "–"}% · week ${pctOf(g.weekly) ?? "–"}%`);
