@@ -72,8 +72,8 @@ account and pick the account under right-click → Configure.
 - The last line is the safe pace: how much of the week you can have used by
   now and still last until the reset with 10% to spare. Time you won't work
   (00.00–06.00, and half of Saturday and Sunday, in your local time) is given
-  up front, so the week starts at 32%. Work hours add the rest, up to 90% at
-  the reset. On the bar, grey is the safe pace and colour is weekly usage.
+  up front. Work hours add the rest. Then 10 points come off as a buffer, so
+  the week starts at 26% and ends at 90%. On the bar, grey is the safe pace and colour is weekly usage.
   Colour past the grey means you are ahead of pace.
 - Check the formula: `node test/pace-test.js`.
 - No 5-hour limit (Claude Ultra): the 5-hour line is dropped.

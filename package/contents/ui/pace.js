@@ -2,10 +2,10 @@
 
 // Safe pace, in local time. Time you won't work (00:00–06:00, and half of
 // Saturday and Sunday) is free: its share of the week is given up front.
-// Work time adds the rest as it passes. 10% of the quota stays as a buffer.
+// Work time adds the rest as it passes. 10 points stay back as a buffer.
 const HOUR = 3600000;
 const WEEK = 7 * 24 * HOUR;
-const BUFFER = 0.1;
+const BUFFER = 10;
 
 function dayWeight(day) {
     return day.getDay() === 0 || day.getDay() === 6 ? 0.5 : 1;
@@ -33,5 +33,5 @@ function pace(resetMs, nowMs) {
     const start = resetMs - WEEK;
     const t = Math.min(Math.max(nowMs, start), resetMs);
     const free = WEEK - weighted(start, resetMs);
-    return Math.round(100 * (1 - BUFFER) * (free + weighted(start, t)) / WEEK);
+    return Math.round(100 * (free + weighted(start, t)) / WEEK - BUFFER);
 }
