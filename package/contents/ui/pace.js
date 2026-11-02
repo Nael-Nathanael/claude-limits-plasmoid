@@ -1,14 +1,17 @@
 .pragma library
 
-// Safe pace: the share of the week's usable time gone by, in local time.
-// 00:00–06:00 counts nothing, Saturday and Sunday count half.
+// Safe pace, in local time. Time you won't work (00:00–06:00, and half of
+// Saturday and Sunday) is free: its share of the week is given up front.
+// Work time adds the rest as it passes. 10% of the quota stays as a buffer.
 const HOUR = 3600000;
+const WEEK = 7 * 24 * HOUR;
+const BUFFER = 0.1;
 
 function dayWeight(day) {
     return day.getDay() === 0 || day.getDay() === 6 ? 0.5 : 1;
 }
 
-// Weighted milliseconds between a and b.
+// Work milliseconds between a and b.
 function weighted(a, b) {
     let sum = 0;
     const day = new Date(a);
@@ -27,7 +30,8 @@ function weighted(a, b) {
 
 // Percent of the week ending at resetMs that is used up by nowMs.
 function pace(resetMs, nowMs) {
-    const start = resetMs - 7 * 24 * HOUR;
+    const start = resetMs - WEEK;
     const t = Math.min(Math.max(nowMs, start), resetMs);
-    return Math.round(100 * weighted(start, t) / weighted(start, resetMs));
+    const free = WEEK - weighted(start, resetMs);
+    return Math.round(100 * (1 - BUFFER) * (free + weighted(start, t)) / WEEK);
 }

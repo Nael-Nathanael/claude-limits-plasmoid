@@ -81,7 +81,7 @@ PlasmoidItem {
             `7d week   ${week ?? "–"}%   resets ${day(resetAt(weekWin))}`,
         ];
         if (weekWin)
-            lines.push(`Safe pace   ${pace ?? "–"}%   keep 7d under it to last the week (nights 0–6 skipped, weekends half)`);
+            lines.push(`Safe pace   ${pace ?? "–"}%   keep 7d under it to last the week with 10% spare`);
         // agy: one 5h and weekly limit per model group; the pill shows the most used.
         for (const g of state.groups || [])
             lines.push(`${g.name}   5h ${pctOf(g["5h"]) ?? "–"}% · week ${pctOf(g.weekly) ?? "–"}%`);
