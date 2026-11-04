@@ -9,7 +9,7 @@
             <default>1</default>
             <min>1</min>
         </entry>
-        <!-- claude | codex (~/.codex) | agy (keyring); the last two ignore profile -->
+        <!-- claude | claude-all (every profile) | codex (~/.codex) | agy (keyring); only claude uses profile -->
         <entry name="provider" type="String">
             <default>claude</default>
         </entry>

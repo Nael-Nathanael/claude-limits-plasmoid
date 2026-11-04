@@ -65,6 +65,9 @@ def jwt_exp(token):
 
 # Claude and Codex tokens are refreshed only by their CLI; an idle account keeps its last numbers.
 def fetch_claude(n):
+    # A ccd API-key profile has no subscription limits, even if an old login is still saved.
+    if os.path.exists(os.path.join(os.path.dirname(claude_creds_path(n)), "ccd.key")):
+        raise Hidden
     try:
         with open(claude_creds_path(n)) as f:
             creds = json.load(f)["claudeAiOauth"]
@@ -196,7 +199,9 @@ def update(name, fetch, creds_path, force):
         relogin = os.path.getmtime(creds_path) > prev.get("checked_at", 0)
     except (OSError, TypeError):
         relogin = False
-    if not force and not relogin and now - max(prev.get("saved_at", 0), prev.get("checked_at", 0)) < MAX_AGE:
+    # A deleted profile folder hides its pill on the next run, not after MAX_AGE.
+    gone = creds_path and not os.path.isdir(os.path.dirname(creds_path)) and not prev.get("hidden")
+    if not force and not relogin and not gone and now - max(prev.get("saved_at", 0), prev.get("checked_at", 0)) < MAX_AGE:
         return
     # On failure the last numbers stay, with the error beside them.
     prev = {} if prev.get("hidden") else prev

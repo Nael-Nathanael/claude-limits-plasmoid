@@ -58,8 +58,9 @@ claude-limits-plasmoid/install.sh
 `~/.local/bin/claude-limits-update` and starts `claude-limits.timer`. Run it
 again to update.
 
-Then right-click the panel → Add Widgets → Claude Limits. Add one widget per
-account and pick the account under right-click → Configure.
+Then right-click the panel → Add Widgets → Claude Limits, and pick the account
+under right-click → Configure. "Claude Code, every profile" shows one pill per
+logged-in profile. Codex and Antigravity each need a widget of their own.
 
 ## Reading a pill
 
@@ -89,13 +90,15 @@ account and pick the account under right-click → Configure.
 
 | Widget setting | File | Login it reads |
 |---|---|---|
-| Claude Code, profile 1 | `claude-1.json` | `~/.claude` |
-| Claude Code, profile N | `claude-N.json` | `~/.claude-profile-N` ([ccd](https://github.com/Nael-Nathanael/ccd)) |
+| Claude Code, every profile | every `claude-N.json` | all of the two below |
+| Claude Code, one profile: 1 | `claude-1.json` | `~/.claude` |
+| Claude Code, one profile: N | `claude-N.json` | `~/.claude-profile-N` ([ccd](https://github.com/Nael-Nathanael/ccd)) |
 | Codex | `codex.json` | `~/.codex/auth.json` |
 | Antigravity | `agy.json` | the `gemini` / `antigravity` keyring entry |
 
 The service finds these on its own. A new `ccd` profile gets a file on the next
-minute. A deleted one hides its widget within 5 minutes.
+minute, and a deleted one goes on the next minute. A `ccd` profile that signs in
+with an API key (`ccd.key`) has no subscription limits, so it gets no pill.
 
 ## Live numbers from Claude Code (optional)
 

@@ -2,98 +2,42 @@ import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
-import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.plasma5support as P5Support
-import "pace.js" as Pace
 
 PlasmoidItem {
     id: root
 
     readonly property int profile: Plasmoid.configuration.profile
     readonly property string provider: Plasmoid.configuration.provider
-    readonly property bool claude: provider === "claude"
-    readonly property string name: claude ? `ccd ${profile}` : provider
-    // The file claude-limits-update (and Claude Code's statusline) keeps fresh.
-    readonly property string target: claude ? `claude-${profile}` : provider
-    readonly property string readCmd: `cat "\${XDG_CACHE_HOME:-$HOME/.cache}/claude-limits/${target}.json"`
-    readonly property string forceCmd: `"$HOME/.local/bin/claude-limits-update" --force ${target}`
-    readonly property var months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
+    // "claude-all": one pill per logged-in Claude Code profile the service has found.
+    readonly property bool all: provider === "claude-all"
+    readonly property string dir: `"\${XDG_CACHE_HOME:-$HOME/.cache}/claude-limits"`
+    // The files claude-limits-update (and Claude Code's statusline) keep fresh.
+    readonly property string readCmd: all
+        ? `cd ${dir} 2>/dev/null && for f in claude-*.json; do printf '%s\\t' "$f"; tr -d '\\n' < "$f"; echo; done`
+        : `cat ${dir}/${provider === "claude" ? `claude-${profile}` : provider}.json`
 
-    property var state: ({})
+    // Targets shown, e.g. ["claude-1", "claude-3"]; replaced only when the set changes, so pills don't flicker.
+    property var targets: []
+    property var quotas: ({})
     property double now: Date.now()
-    // Set by the label. Light text means a dark panel behind it.
-    property bool lightText: true
 
-    // Pastels on a dark panel, deeper shades on a light one.
-    function color(pct) {
-        const c = lightText ? ["#ff6b6b", "#ffd166", "#8ce99a"] : ["#c92a2a", "#b35c00", "#2b8a3e"];
-        return pct >= 80 ? c[0] : pct >= 50 ? c[1] : c[2];
-    }
-
-    // Resets land at hh:59:59.9; round to the nearest minute.
-    function resetAt(win) {
-        return win && win.resets_at ? new Date(win.resets_at * 1000 + 30000) : null;
-    }
-
-    // A window whose reset time has passed is back to 0%.
-    function pctOf(win) {
-        if (!win)
-            return null;
-        if (win.resets_at && win.resets_at * 1000 <= now)
-            return 0;
-        return Math.round(win.used_percentage);
-    }
-
-    function hm(d, sep) {
-        return d ? Qt.formatTime(d, "HH" + sep + "mm") : "–";
-    }
-
-    function num(p) {
-        return p === null ? "–" : `<font color="${color(p)}">${p}%</font>`;
-    }
-
-    readonly property var fiveWin: state.five_hour
-    readonly property var weekWin: state.seven_day
-    readonly property var five: pctOf(fiveWin)
-    readonly property var week: pctOf(weekWin)
-    // The service refreshes every 5 minutes; much older means it is not running.
-    readonly property bool old: !!state.error || (!!state.saved_at && now - state.saved_at * 1000 > 600000)
-
-    // Ultra has no 5-hour limit: only a weekly window comes back.
-    readonly property bool weekOnly: !fiveWin && !!weekWin
-    readonly property var pace: weekWin && weekWin.resets_at ? Pace.pace(weekWin.resets_at * 1000, now) : null
-
-    readonly property bool loading: !fiveWin && !weekWin && !state.error
-    readonly property string weekReset: {
-        const wr = resetAt(weekWin);
-        return (wr ? `${hm(wr, ".")}@${months[wr.getMonth()]} ${wr.getDate()}` : "–") + (old ? '<font color="#888888">*</font>' : "");
-    }
-
-    Plasmoid.status: state.hidden ? PlasmaCore.Types.HiddenStatus : PlasmaCore.Types.ActiveStatus
-
-    toolTipMainText: state.tier ? `${name}  ·  ${state.tier}` : name
-    toolTipSubText: {
-        if (state.missing)
-            return `No quota file yet: ~/.cache/claude-limits/${target}.json\nIs claude-limits.timer running?`;
-        const day = d => d ? Qt.formatDateTime(d, "ddd HH:mm") : "–";
-        const lines = [
-            weekOnly ? "5h session   no limit" : `5h session   ${five ?? "–"}%   resets ${hm(resetAt(fiveWin), ":")}`,
-            `7d week   ${week ?? "–"}%   resets ${day(resetAt(weekWin))}`,
-        ];
-        if (weekWin)
-            lines.push(`Safe pace   ${pace ?? "–"}%   keep 7d under it to last the week with 10% spare`);
-        // agy: one 5h and weekly limit per model group; the pill shows the most used.
-        for (const g of state.groups || [])
-            lines.push(`${g.name}   5h ${pctOf(g["5h"]) ?? "–"}% · week ${pctOf(g.weekly) ?? "–"}%`);
-        const note = [state.error, state.saved_at ? `updated ${day(new Date(state.saved_at * 1000))}` : ""].filter(Boolean).join(" · ");
-        if (note)
-            lines.push(note);
-        lines.push("Click to refresh");
-        return lines.join("\n");
-    }
+    Plasmoid.status: targets.length ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.HiddenStatus
+    // Each pill has its own tooltip.
+    toolTipMainText: ""
+    toolTipSubText: ""
 
     function read() {
         exec.connectSource(readCmd);
+    }
+
+    function show(found) {
+        const names = Object.keys(found).filter(t => !found[t].hidden);
+        if (all)
+            names.sort((a, b) => a.split("-")[1] - b.split("-")[1]);
+        quotas = found;
+        if (JSON.stringify(names) !== JSON.stringify(targets))
+            targets = names;
     }
 
     P5Support.DataSource {
@@ -106,15 +50,28 @@ PlasmoidItem {
                 root.read();  // the forced refresh finished
                 return;
             }
-            try {
-                root.state = JSON.parse(data["stdout"]);
-            } catch (e) {
-                root.state = { missing: true };
+            const found = {};
+            if (root.all) {
+                for (const line of data["stdout"].split("\n")) {
+                    const m = line.match(/^(claude-\d+)\.json\t(.+)$/);
+                    try {
+                        if (m)
+                            found[m[1]] = JSON.parse(m[2]);
+                    } catch (e) {}
+                }
+            } else {
+                const t = root.provider === "claude" ? `claude-${root.profile}` : root.provider;
+                try {
+                    found[t] = JSON.parse(data["stdout"]);
+                } catch (e) {
+                    found[t] = { missing: true };
+                }
             }
+            root.show(found);
         }
     }
 
-    // Reading a small local file is cheap; the network work happens in the service.
+    // Reading small local files is cheap; the network work happens in the service.
     Timer {
         interval: 10000
         running: true
@@ -124,100 +81,22 @@ PlasmoidItem {
     }
 
     preferredRepresentation: fullRepresentation
-    fullRepresentation: MouseArea {
-        id: pill
-        Layout.minimumWidth: grid.implicitWidth
-        Layout.preferredWidth: grid.implicitWidth
-        Layout.maximumWidth: grid.implicitWidth
-        onClicked: exec.connectSource(root.forceCmd)
+    fullRepresentation: RowLayout {
+        spacing: Math.round(height * 0.3)
+        Layout.minimumWidth: implicitWidth
+        Layout.preferredWidth: implicitWidth
+        Layout.maximumWidth: implicitWidth
 
-        // Three lines (5h, 7d, safe pace), or two on Ultra, centred on the panel.
-        // The applet box is shorter than the panel; the text may spill into its margin.
-        readonly property int fontPx: Math.max(7, Math.min(10, Math.floor(height * 0.35)))
-        readonly property bool tall: height > 26
-        readonly property bool showPace: !root.loading && !!root.weekWin
-
-        GridLayout {
-            id: grid
-            anchors.centerIn: parent
-            // Digits leave the descender space empty: centre the ink, not the boxes.
-            anchors.verticalCenterOffset: 1
-            columns: 2
-            // Label boxes carry extra leading; overlap it so three lines fit.
-            rowSpacing: -Math.round(pill.fontPx * (pill.tall ? 0.35 : 0.15))
-            columnSpacing: pill.fontPx * 0.4
-
-            component Cell: PlasmaComponents.Label {
-                visible: text !== ""
-                textFormat: Text.StyledText
-                font.pixelSize: pill.fontPx
-            }
-
-            // Row 1: 5h, or 7d on Ultra.
-            Cell {
-                Layout.alignment: Qt.AlignRight
-                text: root.loading ? `${root.name} …` : root.weekOnly ? root.num(root.week) : root.num(root.five)
-
-                // The text colour comes from the Plasma style, or from Panel Colorizer.
-                readonly property bool light: 0.299 * color.r + 0.587 * color.g + 0.114 * color.b > 0.5
-                onLightChanged: root.lightText = light
-                Component.onCompleted: root.lightText = light
-            }
-            // The 5h reset is shorter than the 7d one: the logo fills the gap.
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: pill.fontPx * 0.4
-                Cell {
-                    text: root.loading ? "" : root.weekOnly ? root.weekReset : root.hm(root.resetAt(root.fiveWin), ".")
-                }
-                Item {
-                    Layout.fillWidth: true
-                }
-                Image {
-                    source: Qt.resolvedUrl(`../images/${{ claude: "claude.svg", codex: "codex.svg", agy: "agy.png" }[root.provider]}`)
-                    sourceSize: Qt.size(pill.fontPx, pill.fontPx)
-                    Layout.preferredWidth: pill.fontPx
-                    Layout.preferredHeight: pill.fontPx
-                }
-            }
-            // Row 2: 7d.
-            Cell {
-                Layout.alignment: Qt.AlignRight
-                text: root.loading || root.weekOnly ? "" : root.num(root.week)
-            }
-            Cell {
-                text: root.loading || root.weekOnly ? "" : root.weekReset
-            }
-            // Last row: safe pace in grey, and a bar of the week: grey = time gone, colour = 7d used.
-            Cell {
-                Layout.alignment: Qt.AlignRight
-                visible: pill.showPace
-                text: `<font color="#888888">${root.pace ?? "–"}%</font>`
-            }
-            Item {
-                visible: pill.showPace
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(2, Math.round(pill.fontPx * 0.3))
-                Layout.alignment: Qt.AlignVCenter
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: height / 2
-                    color: "#888888"
-                    opacity: 0.25
-                }
-                Rectangle {
-                    width: parent.width * (root.pace ?? 0) / 100
-                    height: parent.height
-                    radius: height / 2
-                    color: "#888888"
-                }
-                Rectangle {
-                    width: parent.width * Math.min(100, root.week ?? 0) / 100
-                    height: parent.height
-                    radius: height / 2
-                    color: root.color(root.week ?? 0)
-                }
+        Repeater {
+            model: root.targets
+            Pill {
+                required property string modelData
+                quota: root.quotas[modelData] || {}
+                provider: modelData.startsWith("claude-") ? "claude" : modelData
+                name: provider === "claude" ? `ccd ${modelData.split("-")[1]}` : modelData
+                target: modelData
+                now: root.now
+                onRefresh: exec.connectSource(`"$HOME/.local/bin/claude-limits-update" --force ${modelData}`)
             }
         }
     }
