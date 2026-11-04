@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as P5Support
+import org.kde.kirigami as Kirigami
 
 PlasmoidItem {
     id: root
@@ -82,7 +83,8 @@ PlasmoidItem {
 
     preferredRepresentation: fullRepresentation
     fullRepresentation: RowLayout {
-        spacing: Math.round(height * 0.3)
+        // About the gap the panel leaves between separate widgets.
+        spacing: Kirigami.Units.gridUnit * 1.5
         Layout.minimumWidth: implicitWidth
         Layout.preferredWidth: implicitWidth
         Layout.maximumWidth: implicitWidth
