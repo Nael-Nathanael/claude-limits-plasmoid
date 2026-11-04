@@ -169,9 +169,10 @@ def targets():
         "codex": (fetch_codex, f"{HOME}/.codex/auth.json"),
         "agy": (fetch_agy, None),
     }
-    for d in glob.glob(f"{HOME}/.claude-profile-*"):
-        n = d.rsplit("-", 1)[1]
-        if re.fullmatch(r"\d+", n):
+    # Old files count too: a deleted profile has no login, so its file turns hidden instead of going stale.
+    for p in glob.glob(f"{HOME}/.claude-profile-*") + glob.glob(f"{OUT}/claude-*.json"):
+        n = p.removesuffix(".json").rsplit("-", 1)[1]
+        if re.fullmatch(r"\d+", n) and n != "1":
             found[f"claude-{n}"] = (lambda n=n: fetch_claude(n), claude_creds_path(n))
     return found
 

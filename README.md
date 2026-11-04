@@ -95,7 +95,7 @@ account and pick the account under right-click → Configure.
 | Antigravity | `agy.json` | the `gemini` / `antigravity` keyring entry |
 
 The service finds these on its own. A new `ccd` profile gets a file on the next
-minute.
+minute. A deleted one hides its widget within 5 minutes.
 
 ## Live numbers from Claude Code (optional)
 
