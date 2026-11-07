@@ -2,8 +2,8 @@
 """Keep one quota file per account in ~/.cache/claude-limits/ fresh.
 
 Targets: claude-1 (~/.claude), claude-N (~/.claude-profile-N, ccd), codex (~/.codex), agy (keyring).
-A file missing or older than 5 minutes is fetched again from the provider; Claude Code's
-statusline can write the claude-N files too, which keeps them fresh with no API call.
+A file missing or 5 to 10 minutes old (random per record) is fetched again from the provider;
+Claude Code's statusline can write the claude-N files too, which keeps them fresh with no API call.
 
 File shape: {five_hour: {used_percentage, resets_at}, seven_day: {...}, groups?, tier, error,
 saved_at, checked_at} with epoch seconds, or {hidden: true} when not logged in.
@@ -14,7 +14,10 @@ import base64
 import glob
 import json
 import os
+import random
 import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -26,7 +29,8 @@ CLAUDE_URL = "https://api.anthropic.com/api/oauth/usage"
 CODEX_URL = "https://chatgpt.com/backend-api/wham/usage"
 AGY_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-MAX_AGE = 300
+MIN_AGE = 300
+MAX_AGE = 600
 # Logins keep the old tier ids after Anthropic renamed the plans.
 RENAMED_TIERS = {"max 20x": "ultra", "max 5x": "max"}
 
@@ -63,17 +67,39 @@ def jwt_exp(token):
     return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["exp"]
 
 
-# Claude and Codex tokens are refreshed only by their CLI; an idle account keeps its last numbers.
-def fetch_claude(n):
+def read_claude_login(n):
     try:
         with open(claude_creds_path(n)) as f:
-            creds = json.load(f)["claudeAiOauth"]
+            return json.load(f)["claudeAiOauth"]
     except (OSError, ValueError, KeyError):
         raise Hidden
-    tier = (creds.get("rateLimitTier") or "").replace("default_claude_", "", 1).replace("_", " ")
+
+
+def claude_login_expired(creds):
+    return not creds.get("accessToken") or creds.get("expiresAt", 0) < time.time() * 1000
+
+
+# `claude auth status` renews an expired login and sends no prompt, so it costs no quota.
+def renew_claude_login(n):
+    claude = shutil.which("claude", path=f"{HOME}/.local/bin:{os.environ.get('PATH', '')}")
+    if not claude:
+        return
+    env = dict(os.environ)
+    env.pop("CLAUDE_CONFIG_DIR", None)
+    if n != "1":
+        env["CLAUDE_CONFIG_DIR"] = f"{HOME}/.claude-profile-{n}"
+    subprocess.run([claude, "auth", "status"], env=env, capture_output=True, timeout=60, check=False)
+
+
+def fetch_claude(n):
+    creds = read_claude_login(n)
+    if claude_login_expired(creds):
+        renew_claude_login(n)
+        creds = read_claude_login(n)
+    tier =(creds.get("rateLimitTier") or "").replace("default_claude_", "", 1).replace("_", " ")
     tier = RENAMED_TIERS.get(tier, tier)
-    if not creds.get("accessToken") or creds.get("expiresAt", 0) < time.time() * 1000:
-        return {"tier": tier, "error": f"token expired — run ccd {n} to refresh"}
+    if claude_login_expired(creds):
+        return {"tier": tier, "error": f"login renewal failed — run ccd {n} and /login"}
     usage = get(CLAUDE_URL, {"Authorization": f"Bearer {creds['accessToken']}", "anthropic-beta": "oauth-2025-04-20"})
     win = lambda w: window(w["utilization"], epoch(w.get("resets_at"))) if w else None
     return {"tier": tier, "five_hour": win(usage.get("five_hour")), "seven_day": win(usage.get("seven_day"))}
@@ -195,19 +221,24 @@ def update(name, fetch, creds_path, force):
         relogin = os.path.getmtime(creds_path) > prev.get("checked_at", 0)
     except (OSError, TypeError):
         relogin = False
-    if not force and not relogin and now - max(prev.get("saved_at", 0), prev.get("checked_at", 0)) < MAX_AGE:
+    last = max(prev.get("saved_at", 0), prev.get("checked_at", 0))
+    # Seeded by the record, so the per-minute checks all agree on one deadline.
+    if not force and not relogin and now - last < random.Random(last).randint(MIN_AGE, MAX_AGE):
         return
     # On failure the last numbers stay, with the error beside them.
     prev = {} if prev.get("hidden") else prev
     try:
-        state = {**prev, "error": None, **fetch(), "checked_at": now}
+        state = {**prev, "error": None, **fetch()}
+        # After the fetch, so a login renewed by it does not read as a new login next minute.
+        now = int(time.time())
+        state["checked_at"] = now
         if not state["error"]:
             state["saved_at"] = now
     except Hidden:
         state = {"hidden": True, "checked_at": now}
     except urllib.error.HTTPError as e:
         state = {**prev, "error": f"HTTP {e.code}", "checked_at": now}
-    except (OSError, ValueError, KeyError, TypeError) as e:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as e:
         state = {**prev, "error": str(e) or type(e).__name__, "checked_at": now}
     write(path, state)
 
@@ -223,4 +254,5 @@ def main():
             update(name, fetch, creds_path, force == name)
 
 
-main()
+if __name__ == "__main__":
+    main()

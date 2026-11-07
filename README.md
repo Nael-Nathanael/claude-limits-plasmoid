@@ -34,13 +34,13 @@ The widget only reads that file, every 10 seconds. It makes no network calls
 and holds no tokens.
 
 A small service keeps the files fresh. Once a minute it looks at each one, and
-if a file is missing or more than 5 minutes old, it asks the provider and
-writes it again. After you log in again it fetches straight away.
+if a file is missing or 5 to 10 minutes old (random per record), it asks the
+provider and writes it again. After you log in again it fetches straight away.
 
 Claude Code can write the file too. Its statusline gets your limits with each
 reply, so an open session rewrites its file whenever a reply brings new
-numbers. While that file is under 5 minutes old, the service makes no API call
-for that account.
+numbers. While that file is fresh, the service makes no API call for that
+account.
 
 The file is the only thing the service and the widget share, so a script,
 another bar or a notification can read it too.
@@ -119,9 +119,12 @@ echo "$input" | jq -e --slurpfile old <(cat "$f" 2>/dev/null) '
 ## Tokens
 
 The service reads each tool's saved login and sends it only to that tool's own
-usage endpoint. It never refreshes a Claude Code or Codex token. An account
-left idle until its token expires keeps its last numbers, with a `*`, until you
-use that tool again.
+usage endpoint. When a Claude Code login has expired, the service runs
+`claude auth status` for that profile, which renews the login and sends no
+prompt. If that fails, the account keeps its last numbers, with a `*`.
+
+It never refreshes a Codex token. An idle Codex account keeps its last numbers,
+with a `*`, until you use Codex again.
 
 Antigravity tokens expire after an hour. To let the service renew its own copy
 (never written back), put Antigravity's OAuth client in
